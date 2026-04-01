@@ -1,0 +1,106 @@
+#include <SPI.h>
+#include <SD.h>
+
+// Sensor pins
+#define TRIG_PIN D1
+#define ECHO_PIN D2
+
+// SD card
+#define SD_CS D8
+
+// Threshold
+#define CAR_THRESHOLD 400
+
+File myFile;
+int carCount = 0;
+
+void setup() {
+  Serial.begin(115200);
+
+  pinMode(TRIG_PIN, OUTPUT);
+  pinMode(ECHO_PIN, INPUT);
+
+  Serial.println("Initializing SD card...");
+  if (!SD.begin(SD_CS)) {
+    Serial.println("SD failed!");
+    while (1);
+  }
+
+  Serial.println("SD ready.");
+
+  // Create CSV
+  myFile = SD.open("logcars.csv", FILE_WRITE);
+  if (myFile) {
+    myFile.println("Car#,Start_s,End_s,Duration_s");
+    myFile.close();
+  } else {
+    Serial.println("File error");
+    while (1);
+  }
+}
+
+void loop() {
+  static bool carPresent = false;
+  static unsigned long startTime = 0;
+
+  long duration;
+  float distance;
+
+  // Trigger sensor
+  digitalWrite(TRIG_PIN, LOW);
+  delayMicroseconds(2);
+  digitalWrite(TRIG_PIN, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(TRIG_PIN, LOW);
+
+  duration = pulseIn(ECHO_PIN, HIGH, 30000);
+
+  if (duration == 0) {
+    distance = -1;
+  } else {
+    distance = duration * 0.034 / 2;
+  }
+
+  // === CAR ENTERS ===
+  if (distance > 0 && distance < CAR_THRESHOLD) {
+    if (!carPresent) {
+      carPresent = true;
+      startTime = millis();
+      carCount++;
+
+      Serial.println("Car detected");
+    }
+  }
+
+  // === CAR LEAVES ===
+  else {
+    if (carPresent) {
+      unsigned long endTime = millis();
+      float durationSec = (endTime - startTime) / 1000.0;
+
+      // Log to SD
+      myFile = SD.open("logcars.csv", FILE_WRITE);
+      if (myFile) {
+        myFile.print(carCount);
+        myFile.print(",");
+        myFile.print(startTime / 1000);
+        myFile.print(",");
+        myFile.print(endTime / 1000);
+        myFile.print(",");
+        myFile.println(durationSec);
+
+        myFile.close();
+      }
+
+      Serial.print("Car ");
+      Serial.print(carCount);
+      Serial.print(" stayed for ");
+      Serial.print(durationSec);
+      Serial.println(" seconds");
+
+      carPresent = false;
+    }
+  }
+
+  delay(200);
+}
