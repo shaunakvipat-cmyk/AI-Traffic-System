@@ -1,0 +1,96 @@
+#include <SPI.h>
+#include <SD.h>
+
+// === Sensor pins (moved to avoid SPI conflict) ===
+#define TRIG_PIN D1
+#define ECHO_PIN D2
+
+// === SD card pins (hardware SPI) ===
+#define SD_CS D8
+
+// Car detection threshold (in cm)
+#define CAR_THRESHOLD 400
+
+// File object
+File myFile;
+
+// Track cars
+int carCount = 0;
+
+void setup() {
+  Serial.begin(115200);
+
+  // Sensor setup
+  pinMode(TRIG_PIN, OUTPUT);
+  pinMode(ECHO_PIN, INPUT);
+
+  // SD card setup
+  Serial.println("Initializing SD card...");
+  if (!SD.begin(SD_CS)) {
+    Serial.println("SD initialization failed!");
+    while (1); // Stop if SD fails
+  }
+  Serial.println("SD initialized.");
+
+  // Create CSV file
+  myFile = SD.open("log.csv", FILE_WRITE);
+  if(myFile) {
+    myFile.println("Time_sec,Distance_cm,CarCount"); // header
+    myFile.close();
+  } else {
+    Serial.println("Failed to open log.csv");
+    while (1);
+  }
+  Serial.println("CSV file ready.");
+}
+
+void loop() {
+  long duration;
+  float distance;
+
+  // Trigger sensor
+  digitalWrite(TRIG_PIN, LOW);
+  delayMicroseconds(2);
+  digitalWrite(TRIG_PIN, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(TRIG_PIN, LOW);
+
+  duration = pulseIn(ECHO_PIN, HIGH, 30000); // 30ms timeout
+
+  if (duration == 0) {
+    distance = -1; // No echo
+  } else {
+    distance = duration * 0.034 / 2; // Convert to cm
+  }
+
+  // Car detection logic
+  static bool carPresent = false;
+  if (distance > 0 && distance < CAR_THRESHOLD) {
+    if (!carPresent) {
+      carCount++;
+      carPresent = true;
+    }
+  } else {
+    carPresent = false;
+  }
+
+  // Log to SD
+myFile = SD.open("log.csv", FILE_WRITE);
+if (myFile) {
+    unsigned long t = millis() / 1000; // seconds since start
+    myFile.print(t);
+    myFile.print(",");
+    myFile.print(distance);
+    myFile.print(",");
+    myFile.println(carCount);
+    myFile.close();
+  } else {
+    Serial.println("Failed to open log.csv");
+  }
+
+  // Print debug info
+  Serial.print("Distance: "); Serial.print(distance); Serial.print(" cm, ");
+  Serial.print("CarCount: "); Serial.println(carCount);
+
+  delay(500); // Read every 0.5 seconds
+}
