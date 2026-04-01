@@ -1,0 +1,108 @@
+#include <SPI.h>
+#include <SD.h>
+
+// Sensor pins
+#define TRIG_PIN D1
+#define ECHO_PIN D2
+
+// SD card
+#define SD_CS D8
+
+// Detection range
+#define MIN_DISTANCE 30
+#define MAX_DISTANCE 300
+
+// Leave delay (ms)
+#define LEAVE_DELAY 2000
+
+File myFile;
+int carCount = 0;
+
+void setup() {
+  Serial.begin(115200);
+
+  pinMode(TRIG_PIN, OUTPUT);
+  pinMode(ECHO_PIN, INPUT);
+
+  Serial.println("Initializing SD...");
+  if (!SD.begin(SD_CS)) {
+    Serial.println("SD failed!");
+    while (1);
+  }
+
+  myFile = SD.open("log.csv", FILE_WRITE);
+  if (myFile) {
+    myFile.println("Car#,Start_s,End_s,Duration_s");
+    myFile.close();
+  }
+}
+
+void loop() {
+  static bool carPresent = false;
+  static unsigned long startTime = 0;
+  static unsigned long lastSeenTime = 0;
+
+  long duration;
+  float distance;
+
+  // Trigger sensor
+  digitalWrite(TRIG_PIN, LOW);
+  delayMicroseconds(2);
+  digitalWrite(TRIG_PIN, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(TRIG_PIN, LOW);
+
+  duration = pulseIn(ECHO_PIN, HIGH, 30000);
+
+  if (duration == 0) {
+    distance = -1;
+  } else {
+    distance = duration * 0.034 / 2;
+  }
+
+  unsigned long currentTime = millis() / 1000;
+  unsigned long currentMillis = millis();
+
+  // === CAR DETECTED ===
+  if (distance > MIN_DISTANCE && distance < MAX_DISTANCE) {
+    lastSeenTime = currentMillis;
+
+    if (!carPresent) {
+      carPresent = true;
+      startTime = currentTime;
+      carCount++;
+
+      Serial.print("Car ");
+      Serial.print(carCount);
+      Serial.println(" entered");
+    }
+  }
+
+  // === CHECK IF CAR LEFT (with delay) ===
+  if (carPresent && (currentMillis - lastSeenTime > LEAVE_DELAY)) {
+    unsigned long endTime = currentTime;
+    unsigned long durationSec = endTime - startTime;
+
+    myFile = SD.open("log.csv", FILE_WRITE);
+    if (myFile) {
+      myFile.print(carCount);
+      myFile.print(",");
+      myFile.print(startTime);
+      myFile.print(",");
+      myFile.print(endTime);
+      myFile.print(",");
+      myFile.println(durationSec);
+      myFile.close();
+    }
+
+    Serial.print("Car ");
+    Serial.print(carCount);
+    Serial.print(" left. Duration: ");
+    Serial.print(durationSec);
+    Serial.println(" sec");
+
+    carPresent = false;
+  }
+
+  delay(200);
+}
