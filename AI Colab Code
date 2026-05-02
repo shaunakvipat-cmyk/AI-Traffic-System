@@ -1,0 +1,60 @@
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+from sklearn.linear_model import LinearRegression
+
+# Upload CSV
+from google.colab import files
+uploaded = files.upload()
+
+filename = list(uploaded.keys())[0]
+df = pd.read_csv(filename)
+
+# Clean column names (just in case)
+df.columns = ["Car", "Start", "End", "Duration"]
+
+print(df.head())
+
+# Convert Start time to minute buckets
+df["Minute"] = (df["Start"] // 60).astype(int)
+
+# Count cars per minute
+cars_per_min = df.groupby("Minute")["Car"].count().reset_index()
+cars_per_min.columns = ["Minute", "CarCount"]
+
+print(cars_per_min.head())
+
+# Plot actual traffic
+plt.plot(cars_per_min["Minute"], cars_per_min["CarCount"])
+plt.xlabel("Minute")
+plt.ylabel("Cars")
+plt.title("Cars Per Minute")
+plt.show()
+
+# ---- AI MODEL ----
+
+X = cars_per_min["Minute"].values.reshape(-1, 1)
+y = cars_per_min["CarCount"].values
+
+model = LinearRegression()
+model.fit(X, y)
+
+# Predict next 10 minutes
+future_minutes = np.arange(X.max()+1, X.max()+11).reshape(-1, 1)
+predictions = model.predict(future_minutes)
+
+pred_df = pd.DataFrame({
+    "Minute": future_minutes.flatten(),
+    "PredictedCars": predictions
+})
+
+print(pred_df)
+
+# Plot prediction
+plt.plot(cars_per_min["Minute"], cars_per_min["CarCount"], label="Actual")
+plt.plot(pred_df["Minute"], pred_df["PredictedCars"], label="Predicted")
+plt.legend()
+plt.xlabel("Minute")
+plt.ylabel("Cars")
+plt.title("Traffic Prediction")
+plt.show()
